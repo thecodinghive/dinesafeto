@@ -1,4 +1,9 @@
-##############Data Loading ###########
+#DineSafe is Toronto Public Health's food safety program that inspects all establishments serving and preparing food. Each inspection results in a pass, a conditional pass or a closed notice.
+#Objective: Can information about restaurants inspection be used to predict how long a restaurant stays in business?
+#Developer: Fouad Yousif, fouad.yousif@thecodinghive.com
+#Date: January 2018
+
+##############Load Required Packages###########
 library(plyr)
 library(reshape2)
 library(ggplot2)
@@ -8,10 +13,13 @@ library(mlr)
 library(RColorBrewer)
 library(wordcloud)
 
+
+#############  Part I: Data Cleaning / Feature Engineering ##################
+
 #read the dataset
 dinesafe<-read.delim("/users/fouadyousif/Downloads/dinesafe_data_export-with-postal-code-2017-10-27-0009 2.csv",sep=",",header=T)
 
-#sub the dataset
+#subset the dataset
 dinesafe_time <- dinesafe[c('establishment_id','inspection_date','deleted_at','inspection_status')]
 #convert inspection date feature to date
 dinesafe_time$inspection_date <- as.Date(dinesafe_time$inspection_date)
@@ -29,16 +37,15 @@ maximum_deleted_at_date <-aggregate(dinesafe_time$deleted_at ~ dinesafe_time$est
 collapsed_inspection_status <- data.frame(maximum_deleted_at_date)
 collapsed_inspection_status$count <- NA
 collapsed_inspection_status$score <- NA
-
 names(collapsed_inspection_status)<-c('establishment_id','inspection_status','inspection_count','inspection_score')
 collapsed_inspection_status$inspection_status <- as.character(collapsed_inspection_status$inspection_status)
 
+#assign a value of 0, 50, or 100 for each inspection outcome and take the mean
 for (i in unique(collapsed_inspection_status$establishment_id)) {
   tmp <- (na.omit(dinesafe_time[dinesafe_time$establishment_id==i,c('inspection_status')]))
   tmp <- gsub("Closed",0,tmp)
   tmp <- gsub("Conditional Pass",50,tmp)
   tmp <- gsub("Pass",100,tmp)
-  
   collapsed_inspection_status[collapsed_inspection_status$establishment_id==i,c('inspection_count')]<-length(tmp)
   if(length(tmp)>=5){
     collapsed_inspection_status[collapsed_inspection_status$establishment_id==i,c('inspection_score')]<-mean(as.numeric(tmp))
@@ -113,20 +120,18 @@ dinesafe_c<-dinesafe_c[dinesafe_c$time_to_closure>180,]
 #change status of closure to T and F
 dinesafe_c$closure<-dinesafe_c$closure=="closed"
 
-
 #perform enrichment analysis right here
 dinesafe_fail_fraction <-data.frame(table(as.matrix(dinesafe_c$fsa),as.character(dinesafe_c$inspection_status))[,1],table(as.matrix(dinesafe_c$fsa),as.character(dinesafe_c$inspection_status))[,2],table(as.matrix(dinesafe_c$fsa),as.character(dinesafe_c$inspection_status))[,1]/(table(as.matrix(dinesafe_c$fsa),as.character(dinesafe_c$inspection_status))[,1]+table(as.matrix(dinesafe_c$fsa),as.character(dinesafe_c$inspection_status))[,2]))
 names(dinesafe_fail_fraction)<-c('n_failed','n_total','ratio_failed')
 
 #remove fsa that has <50 restautants
-
 dinesafe_fail_fraction <- dinesafe_fail_fraction[dinesafe_fail_fraction$n_total>50,]
 dinesafe_fail_fraction$pvalue <- NULL
 
 #perform a binomial test
 for (i in 1:nrow(dinesafe_fail_fraction)){
-#dinesafe_fail_fraction[i,c('pvalue')] <- binom.test(dinesafe_fail_fraction[i,c('n_failed')], dinesafe_fail_fraction[i,c('n_total')], p = mean(dinesafe_fail_fraction[,c('ratio_failed')]),alternative = c("two.sided"),conf.level = 0.95)$p.value
-dinesafe_fail_fraction[i,c('pvalue')] <- prop.test(dinesafe_fail_fraction[i,c('n_failed')], dinesafe_fail_fraction[i,c('n_total')], p= mean(dinesafe_fail_fraction[,c('ratio_failed')]), correct=FALSE,alternative =c("two.sided"))$p.value
+  #dinesafe_fail_fraction[i,c('pvalue')] <- binom.test(dinesafe_fail_fraction[i,c('n_failed')], dinesafe_fail_fraction[i,c('n_total')], p = mean(dinesafe_fail_fraction[,c('ratio_failed')]),alternative = c("two.sided"),conf.level = 0.95)$p.value
+  dinesafe_fail_fraction[i,c('pvalue')] <- prop.test(dinesafe_fail_fraction[i,c('n_failed')], dinesafe_fail_fraction[i,c('n_total')], p= mean(dinesafe_fail_fraction[,c('ratio_failed')]), correct=FALSE,alternative =c("two.sided"))$p.value
 }
 
 #adjust p-values
@@ -147,7 +152,7 @@ lat <- as.numeric(as.character(dinesafe_c$lat))
 lon <- as.numeric(as.character(dinesafe_c$lng))
 inspection_score <- dinesafe_c$inspection_score
 
-#split the inspection score to 94, 71, and 51
+#split the inspection score to low, medium and high
 to_map <- na.omit(data.frame(inspection_score, lat, lon))
 to_map$color <- NA
 to_map[to_map$inspection_score==100,c('color')] <- 'high'
@@ -184,20 +189,7 @@ names(per_fsa_count) <- c('fsa','count')
 plot(density(as.numeric(per_fsa_count$count)),xlab="Number of Restaurants Per FSA",main="Restaurants Geographical Density")
 
 
-##############Data Exploration #############
-
-
-
-
-##############Feature Engineering ####################
-
-
-
-
-
-
-
-################Machine Learning ######################
+################ Part II: Machine Learning ######################
 
 #convert the fsa into dummy variables
 dinesafe_c_model <- cbind(dinesafe_c$closure,dinesafe_c$time_to_closure,dinesafe_c$latest_type,dinesafe_c$inspection_score,dummy(dinesafe_c$fsa))
@@ -206,7 +198,7 @@ dinesafe_c_model<-data.frame(dinesafe_c_model)
 names(dinesafe_c_model)[1:4] <- c('closure','time_to_closure','latest_type','inspection_score')
 
 #split to 70% train and 30% test
-## set the seed to make your partition reproductible
+## set the seed to make your partition reproducible
 set.seed(123)
 smp_size <- floor(0.70 * nrow(dinesafe_c_model))
 train_ind <- sample(seq_len(nrow(dinesafe_c_model)), size = smp_size)
@@ -214,14 +206,11 @@ train_ind <- sample(seq_len(nrow(dinesafe_c_model)), size = smp_size)
 train <- na.omit(dinesafe_c_model[train_ind, ])
 test <- na.omit(dinesafe_c_model[-train_ind, ])
 
-#train_rf <- dinesafe_c_model[train_ind,names(dinesafe_c_model)]
-#test_rf <- dinesafe_c[-train_ind,names(dinesafe_c_model)]
-
 #create a task
 traintask <- makeSurvTask(data = train,target = c("time_to_closure","closure")) 
 testtask <- makeSurvTask(data = test, target=c("time_to_closure","closure"))
 
-#set 10 fold cross validation
+#set 5 fold cross validation
 rdesc <- makeResampleDesc("CV",iters=5L)
 
 #make randomForest learner
@@ -253,12 +242,7 @@ ctrl <- makeTuneControlRandom(maxit = 5L)
 #start tuning
 tune <- tuneParams(learner = rf.lrn, task = traintask, resampling = rdesc, measures = list(acc), par.set = params, control = ctrl, show.info = T)
 
-getParamSet(rf.lrn)
-
-tune
-
 #plot KM plots for validation set
-pdf("~/Documents/thecodinghive/survival.pdf")
 predictions.df<-data.frame(pred[[2]])
 predictions.df[5]<-NA
 predictions.df[predictions.df$response>70,5]<-0
@@ -267,5 +251,5 @@ names(predictions.df)[5]<-c("response.binary")
 fit <- survfit(Surv(predictions.df$truth.time,predictions.df$truth.event)~predictions.df$response.binary, data=predictions.df)
 plot(fit,col=c('blue','red'), xlab="Days", ylab = "Proportion of Restaurants Open")
 legend('left', c("High Risk","Low Risk"), col=c('blue','red'), lty = 1)
-dev.off()
 
+#cindex = 0.65
