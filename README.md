@@ -9,7 +9,7 @@ Data:
 - Other features include restaurant type, geographical location, and FSA code
 
 Conclusions:
-- Inspection results were used to generate a score (out of a 100) that summarizes overall inspection status per establishment. A score closer to a 100 represents an establishment that follows the public health and safety guidelines, while a score closer to zero represent establishments that fail to do so on regular basis
-- Certain FSAs in Toronto are enriched with establishments that have low inspection score
-- Inspection score along with FSA and restaurant type information were used to build a classifier that can predict low/high risk establishment classes
-- There is a significant difference in restaurant survival time between the two classes, indicating the important role that inspection performance, along with establishment location play in an establishment's longivity
+- Inspection results were used to generate a score (out of a 100) that summarizes overall inspection status per restaurant. A score closer to a 100 represents restaurants that follow the public health and safety guidelines, while a score closer to zero represent restaurants that fail to do so on regular basis
+- Certain FSAs in Toronto are enriched with restaurants that have low inspection score
+- Inspection score along with FSA and restaurant type information were used to build a classifier that can predict low/high risk restaurant classes
+- There is a significant difference in restaurant survival time between the two classes, indicating the important role that inspection performance, along with location play in an establishment's longivity
